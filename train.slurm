@@ -19,7 +19,6 @@ mkdir -p logs
 
 # ==================== Environment ====================
 source venv/bin/activate          # Activate your Python 3.9 venv
-export PYTHONPATH=$PWD:$PYTHONPATH
 pip install -r requirements.txt   # Install requirements
 
 # ==================== Training Command ====================
