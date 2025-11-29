@@ -3,13 +3,13 @@
 #SBATCH --nodes=1
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
-#SBATCH --time=5:00:00
+#SBATCH --time=02:00:00
 #SBATCH --partition=coursework
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G        
+#SBATCH --mem=32G       
 #SBATCH --mail-type=END,FAIL,TIME_LIMIT_90
-#SBATCH --mail-user=your_email@your_university.edu   # Optional
+#SBATCH --mail-user=yiuctsoi2-c@my.cityu.edu.hk   # Optional
 
 # ==================== Directory Setup ====================
 cd $HOME/CS4487-course-project
