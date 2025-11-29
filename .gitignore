@@ -2,4 +2,5 @@ venv/
 data/
 test/
 *.pth
+logs/
 __pycache__
