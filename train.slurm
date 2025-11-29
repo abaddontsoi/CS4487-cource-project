@@ -23,7 +23,7 @@ pip install -r requirements.txt   # Install requirements
 
 # ==================== Training Command ====================
 
-# Stage 1: Train backbones (36 epochs)
-python train.py
+# Run the training jupyter notebook
+jupyter nbconvert --to notebook --execute Train.ipynb --output logs/train
 
 echo "Job finished at $(date)"

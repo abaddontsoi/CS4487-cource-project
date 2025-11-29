@@ -10,3 +10,4 @@ opencv-python>=4.8.0
 albumentations>=1.4.0
 pandas
 scikit-learn
+jupyter
