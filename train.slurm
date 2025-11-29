@@ -3,11 +3,11 @@
 #SBATCH --nodes=1
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
-#SBATCH --time=48:00:00                 # Max 48 hours (adjust as needed)
-#SBATCH --partition=coursework                 # or: gpu-a100, gpu-rtx, etc. (check your cluster)
-#SBATCH --gres=gpu:1                    # 1 GPU (change to 2,4,8 if doing DDP)
-#SBATCH --cpus-per-task=12              # Good for data loading
-#SBATCH --mem=64G                       # 64 GB RAM (increase if OOM)
+#SBATCH --time=48:00:00
+#SBATCH --partition=coursework
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=64G        
 #SBATCH --mail-type=END,FAIL,TIME_LIMIT_90
 #SBATCH --mail-user=your_email@your_university.edu   # Optional
 
