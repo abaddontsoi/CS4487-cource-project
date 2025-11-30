@@ -5,7 +5,7 @@
 #SBATCH --error=logs/train_%j.err
 #SBATCH --time=12:00:00
 #SBATCH --partition=coursework
-#SBATCH --qos=coursework
+#SBATCH --account=coursework
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32G       
