@@ -1,28 +1,27 @@
 import os
 import random
 import shutil
-import multiprocessing
+import csv
+import json
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torchvision.transforms.autoaugment import RandAugment
 from timm import create_model
-import csv
-import json
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
-# Setup
-batch_size_frozen = 64
-batch_size_unfrozen = 64  
+# === Config ===
+batch_size = 64
+learning_rate = 1e-5
+total_epochs = 15
 torch.backends.cudnn.benchmark = True
 device = "cuda" if torch.cuda.is_available() else "cpu"
-num_workers = 12  # safe high-performance
+num_workers = 12
 
 # === Transforms ===
 train_transform = transforms.Compose([
@@ -43,7 +42,7 @@ val_transform = transforms.Compose([
 ])
 
 # === Dataset Split ===
-def split_train_to_val(source_dir, val_ratio=0.15, seed=42):
+def split_train_to_val(source_dir, val_ratio=0.2, seed=42):
     source_dir = Path(source_dir)
     val_dir = source_dir.parent / "val"
     random.seed(seed)
@@ -57,14 +56,12 @@ def split_train_to_val(source_dir, val_ratio=0.15, seed=42):
             print(f"Skipping missing class folder: {train_class_dir}")
             continue
 
-        # Skip if already split
         if val_class_dir.exists() and any(val_class_dir.iterdir()):
             print(f"Validation folder already exists and is not empty: {val_class_dir}. Skipping.")
             continue
 
         val_class_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get image files
         image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
         files = [f for f in train_class_dir.iterdir() if f.suffix.lower() in image_extensions and f.is_file()]
         if not files:
@@ -80,8 +77,8 @@ def split_train_to_val(source_dir, val_ratio=0.15, seed=42):
             dest = val_class_dir / f.name
             shutil.copy(str(f), str(dest))
 
-    print(f"\nValidation set created at: {val_dir}")
-    
+    print(f"\n✅ Validation set created at: {val_dir}")
+
 # === Dataset Class ===
 class data_loader(Dataset):
     def __init__(self, data_dir, transform=None):
@@ -103,7 +100,7 @@ class data_loader(Dataset):
 
 # === Model ===
 class CNN(nn.Module):
-    def __init__(self, pretrained=True, freeze_backbone=True, dropout=0.3):
+    def __init__(self, pretrained=True, freeze_backbone=False, dropout=0.3):
         super(CNN, self).__init__()
         self.vit = create_model('vit_large_patch16_224', pretrained=pretrained, num_classes=0)
         self.freeze_backbone = freeze_backbone
@@ -128,53 +125,29 @@ class CNN(nn.Module):
         feat = self.vit(x)
         return self.fusion(feat)
 
-    def unfreeze_backbone(self):
-        for param in self.vit.parameters():
-            param.requires_grad = True
-        self.freeze_backbone = False
-
 # === Train Function ===
 def train():
     data_root = "data"
-    total_epochs = 5
-    freeze_epochs = 2
-    lr_frozen = 1e-4
-    lr_unfrozen = 1e-5
-
     metrics_log = {
-        "train_loss": [],
-        "train_acc": [],
-        "train_prec": [],
-        "train_rec": [],
-        "train_f1": [],
-        "val_acc": [],
-        "val_prec": [],
-        "val_rec": [],
-        "val_f1": []
+        "train_loss": [], "train_acc": [], "train_prec": [], "train_rec": [], "train_f1": [],
+        "val_acc": [], "val_prec": [], "val_rec": [], "val_f1": []
     }
 
     split_train_to_val(os.path.join(data_root, "train"), val_ratio=0.15)
     train_dataset = data_loader(os.path.join(data_root, "train"), transform=train_transform)
     val_dataset = data_loader(os.path.join(data_root, "val"), transform=val_transform)
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size_frozen, shuffle=True,
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=False)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size_frozen, shuffle=False,
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=num_workers, pin_memory=False)
 
-    model = CNN(pretrained=True, freeze_backbone=True).to(device)
+    model = CNN(pretrained=True, freeze_backbone=False).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr_frozen)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scaler = torch.cuda.amp.GradScaler()
 
     for epoch in range(total_epochs):
-        if epoch == freeze_epochs and model.freeze_backbone:
-            print(f"🔓 Unfreezing ViT backbone at epoch {epoch+1}")
-            model.unfreeze_backbone()
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr_unfrozen)
-            train_loader = DataLoader(train_dataset, batch_size=batch_size_unfrozen,
-                                      shuffle=True, num_workers=num_workers, pin_memory=False)
-
         model.train()
         total_loss, total_correct, total = 0, 0, 0
         train_preds, train_targets = [], []
@@ -203,6 +176,7 @@ def train():
             train_targets, train_preds, average='macro', zero_division=0
         )
 
+        # === Validation ===
         model.eval()
         val_preds, val_targets = [], []
         with torch.no_grad():
@@ -233,13 +207,13 @@ def train():
               f"Train Acc: {train_acc:.4f} | Prec: {train_prec:.4f} | Rec: {train_rec:.4f} | F1: {train_f1:.4f} || "
               f"Val Acc: {val_acc:.4f} | Prec: {val_prec:.4f} | Rec: {val_rec:.4f} | F1: {val_f1:.4f}")
 
+    # === Save model and logs ===
     torch.save(model.state_dict(), "model.pth")
     print("✅ Model saved to model.pth")
 
-    # === Save metrics ===
     os.makedirs("logs", exist_ok=True)
-    csv_path = "logs/vit_all_metrics_frozen_5e.csv"
-    json_path = "logs/vit_all_metrics_frozen_5e.json"
+    csv_path = "logs/vit_all_metrics_15e.csv"
+    json_path = "logs/vit_all_metrics_15e.json"
 
     with open(csv_path, mode='w', newline='') as f:
         writer = csv.writer(f)
@@ -265,6 +239,7 @@ def train():
         json.dump(metrics_log, f, indent=2)
 
     print(f"📁 Metrics saved to {csv_path} and {json_path}")
+
 # === Entry Point ===
 if __name__ == "__main__":
     train()
